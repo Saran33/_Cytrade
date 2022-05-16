@@ -1,21 +1,21 @@
 # CyTrade
 
 ## CyTrade Algorithmic Trading
-CyTrade is a repo with some examples for stream-learning-based Machine Learning trading strategies for trading cryptocurrency. These examples are built with [Cytrader](https://github.com/Saran33/cytrader) (a cythonized fork of Backtrader), [Ct-CCXT-Store](https://github.com/Saran33/ct-ccxt-store) (a fork of Backtrader-CCXT-Store) and [River](https://riverml.xyz/latest/).
+CyTrade is a repo with some examples for stream-learning-based Machine Learning strategies for trading cryptocurrency. These examples are built with [Cytrader](https://github.com/Saran33/cytrader) (a cythonized fork of Backtrader), [Ct-CCXT-Store](https://github.com/Saran33/ct-ccxt-store) (a fork of Backtrader-CCXT-Store) and [River](https://riverml.xyz/latest/).
 
 This repository is accessible at:
 [CyTrade](https://github.com/Saran33/_CyTrade)
 
 #### To install from git:
 `pip install git+https://github.com/Saran33/_CyTrade.git`
-To build from cython files:
+- To build from cython files:
 ```zsh
 cd cytrade
 python setup.py build_ext --inplace
 ```
 
 ## USAGE:
-Cytrade is set up to use environment variables for API keys, to indicate whether you are live trading or usng a demo account, and to indicate whether you are trading spot or futures. Set a `.env` file in the `cytrade` directory, or alternatively as environemnt varibales with your cloud provider. e.g.:
+Cytrade is set up to use environment variables for API keys, as well as to indicate whether you are live trading or usng a demo account, and to indicate whether you are trading spot or futures. Set a `.env` file in the `cytrade` directory, or alternatively set environemnt varibales with your cloud provider. e.g.:
 ```zsh
 LIVE=False
 FUTS=False
