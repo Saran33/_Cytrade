@@ -1,0 +1,24 @@
+ct_ccxt_store @ git+https://github.com/Saran33/ct-ccxt-store.git
+Cython
+cytrader @ git+https://github.com/Saran33/cytrader.git
+cytrader-binance @ git+https://github.com/Saran33/cytrader-binance
+datatile @ git+https://github.com/Saran33/datatile.git@main#egg=datatile
+django
+matplotlib
+numpy
+pandas
+pandas-datareader
+python-decouple
+pyfolio @ git+https://github.com/Saran33/pyfolio
+pykalman
+Pyomo
+pytz
+river @ git+https://github.com/online-ml/river
+scipy
+seaborn
+simplejson
+sklearn
+sympy
+ta
+tables
+tqdm
