@@ -33,3 +33,4 @@ BINANCE_FUTS_TEST_SECRET=YOUR_FUTURES_DEMO_SECRET
 #### Stream Learning strategy
 - The `backtests/btRiver.ipynb` notebook file contains an example logistic regression strategy, integrating River with Backtrader.
 - It is using the Kelly Critereon to size positions (solving for the maximum growth rate is done in cython, which is 200 times faster than if done in scipy and numpy `cytrade/cyutils/cyzers.pyx`).
+- In the example, the Kelly allocation fraction is scaled by the model's probability estimate.
