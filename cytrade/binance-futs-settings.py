@@ -1,16 +1,18 @@
 import os
 import sys
-from pprint import pprint
+from pprint import pprint as pp
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(root + "/python")
 
 import ccxt  # noqa: E402
+from ccxt.base.errors import ExchangeError
 
-print('CCXT Version:', ccxt.__version__)
+print("CCXT Version:", ccxt.__version__)
 
 from setEnv import set_binance_env
-LIVE, FUTS, TEST, BINANCE_KEY, BINANCE_SECRET = set_binance_env(FUTS=True)
+
+LIVE, FUTS, TEST, BINANCE_KEY, BINANCE_SECRET = set_binance_env(FUTS=False)
 
 # Must read before your start:
 #
@@ -85,151 +87,229 @@ def table(values):
     first = values[0]
     keys = list(first.keys()) if isinstance(first, dict) else range(0, len(first))
     widths = [max([len(str(v[k])) for v in values]) for k in keys]
-    string = ' | '.join(['{:<' + str(w) + '}' for w in widths])
+    string = " | ".join(["{:<" + str(w) + "}" for w in widths])
     return "\n".join([string.format(*[str(v[k]) for k in keys]) for v in values])
 
 
-exchange = ccxt.binance({
-    'apiKey': BINANCE_KEY,
-    'secret': BINANCE_SECRET,
-    'options': {
-        'defaultType': 'future',
-    },
-})
+if TEST:
+    options = {"fetchCurrencies": False,}
+else:
+    options = {}
+if FUTS:
+    options = options | {"defaultType": "future"}
+    config = {"apiKey": BINANCE_KEY, "secret": BINANCE_SECRET, "options": options}
+    exchange = ccxt.binanceusdm(config)
+else:
+    config = {"apiKey": BINANCE_KEY, "secret": BINANCE_SECRET, "options": options}
+    exchange = ccxt.binance(config)
 
 if TEST:
     print("DEMO ACCOUNT")
     exchange.set_sandbox_mode(True)
 
-markets = exchange.load_markets();
+
+markets = exchange.load_markets()
+exchange.verbose = True  # UNCOMMENT THIS AFTER LOADING THE MARKETS FOR DEBUGGING
+print("----------------------------------------------------------------------")
 
 
-def get_futures_balance(symbol='BTC/USDT'):
-    market = exchange.market(symbol)
+def get_open_positions(params=None):
+    '''Return all currently open positions.'''
+    balance = exchange.fetch_balance(params)
+    positions = balance['info']['positions']
+    current_positions = [position for position in positions if abs(float(position['positionAmt'])) > 0];
+    pp(current_positions)
+    print("----------------------------------------------------------------------")
+    return current_positions;
 
-    exchange.verbose = True  # UNCOMMENT THIS AFTER LOADING THE MARKETS FOR DEBUGGING
 
-    print('----------------------------------------------------------------------')
+def get_position(ticker='BTCUSDT', params=None):
+    '''Get a specific open position by ticker.'''
+    balance = exchange.fetch_balance(params)
+    positions = balance['info']['positions']
+    position = [position for position in positions if position['symbol'] == ticker];
+    pp(position)
+    print("----------------------------------------------------------------------")
+    return position[0];
 
-    print('Fetching your balance:')
+
+def get_notional(ticker='BTCUSDT'):
+    '''Get the notional value of an open position.'''
+    position = get_position(ticker)
+    print("NOTIONAL:", position['notional'])
+    return position['notional'] if position else 0
+
+
+def get_futures_balances(info=False):
+    print("Fetching your balance:")
     response = exchange.fetch_balance();
-    pprint(response['total'])  # make sure you have enough futures margin...
-    # pprint(response['info'])  # more details
+    pp(response["total"])  # make sure you have enough futures margin...
+    if info:
+        pp(response["info"])  # more details
 
-    print('----------------------------------------------------------------------')
-    return response['total'];
+    print("----------------------------------------------------------------------")
+    return response["total"]
 
 
-def get_futures_positions(symbol='BTC/USDT'):
-    '''https://binance-docs.github.io/apidocs/futures/en/#position-information-v2-user_data'''
+def get_futures_positions(symbol="BTC/USDT"):
+    """https://binance-docs.github.io/apidocs/futures/en/#position-information-v2-user_data"""
 
-    print('Getting your positions:')
-    response = exchange.fapiPrivateV2_get_positionrisk();
+    print("Getting your positions:")
+    response = exchange.fapiPrivateV2_get_positionrisk()
     print(table(response))
 
-    print('----------------------------------------------------------------------')
-    symb = symbol.replace('/', '')
-    res = [r for r in response if r.get('symbol') == symb]
+    print("----------------------------------------------------------------------")
+    symb = symbol.replace("/", "")
+    res = [r for r in response if r.get("symbol") == symb]
     return res
 
 
 def get_oneway_or_hedge():
     # https://binance-docs.github.io/apidocs/futures/en/#change-position-mode-trade
 
-    print('Getting your current position mode (One-way or Hedge Mode):')
-    response = exchange.fapiPrivate_get_positionside_dual();
-    if response['dualSidePosition']:
-        print('You are in Hedge Mode')
+    print("Getting your current position mode (One-way or Hedge Mode):")
+    response = exchange.fapiPrivate_get_positionside_dual()
+    if response["dualSidePosition"]:
+        print("You are in Hedge Mode")
     else:
-        print('You are in One-way Mode')
-    print('----------------------------------------------------------------------')
-    return response['dualSidePosition']
+        print("You are in One-way Mode")
+    print("----------------------------------------------------------------------")
+    return response["dualSidePosition"]
 
 
 ## Change SETTINGS:
 def set_hedge_mode(hedge=False):
     if not hedge:
-        print('Setting your position mode to One-way:')
+        print("Setting your position mode to One-way:")
     else:
-        print('Setting your positions to Hedge mode:')
+        print("Setting your positions to Hedge mode:")
 
-    response = exchange.fapiPrivate_post_positionside_dual({
-        'dualSidePosition': hedge,
-    })
-    print(response)
-    print('----------------------------------------------------------------------')
-
-
-def set_cross_mode(symbol='BTC/USDT', cross=False):
-    '''https://binance-docs.github.io/apidocs/futures/en/#change-margin-type-trade'''
-
-    market = exchange.market(symbol)
-    mtype = 'CROSSED' if cross else 'ISOLATED'
-
-    print(f'Changing your', symbol, 'position margin mode to {mtype}:')
-    response = exchange.fapiPrivate_post_margintype({
-        'symbol': market['id'],
-        'marginType': mtype,
-    })
-    print(response)
-    print('----------------------------------------------------------------------')
+    try:
+        response = exchange.fapiPrivate_post_positionside_dual(
+            {
+                "dualSidePosition": hedge,
+            }
+        )
+        print(response["msg"])
+    except ExchangeError as e:
+        print(e)
+        return e
+    print("----------------------------------------------------------------------")
     return response
 
 
-def binance_transfer(coin='USDT', amount=0., typ=1):
-    ''' typ:
+def set_cross_mode(symbol="BTC/USDT", cross=False):
+    """https://binance-docs.github.io/apidocs/futures/en/#change-margin-type-trade"""
+
+    market = exchange.market(symbol)
+    mtype = "CROSSED" if cross else "ISOLATED"
+
+    print(f"Changing your", symbol, "position margin mode to {mtype}:")
+    try:
+        response = exchange.fapiPrivate_post_margintype(
+            {
+                "symbol": market["id"],
+                "marginType": mtype,
+            }
+        )
+        print(response)
+    except ExchangeError as e:
+        print(e)
+        return e
+    print("----------------------------------------------------------------------")
+    return response
+
+
+def binance_transfer(coin="USDT", amount=0.0, typ=1):
+    """typ:
         # 1: transfer from spot account to USDⓈ-M futures account.
         # 2: transfer from USDⓈ-M futures account to spot account.
         # 3: transfer from spot account to COIN-Ⓜ futures account.
         # 4: transfer from COIN-Ⓜ futures account to spot account.
 
+    Note that sapi endpoints are not available on testnet/sandbox.
     https://binance-docs.github.io/apidocs/spot/en/#new-future-account-transfer-futures
     # OR:
     # https://github.com/ccxt/ccxt/blob/master/examples/js/binance-universal-transfer.js
     # https://docs.ccxt.com/en/latest/manual.html#transfers
-    '''
+    """
 
     currency = exchange.currency(coin)
     msg = {
-        1: 'funds from your spot account to your USDⓈ-M futures account:',
-        2: 'funds from your USDⓈ-M account to your spot account:',
-        3: 'funds from your spot account to your COIN-Ⓜ futures account:',
-        4: 'funds from your COIN-Ⓜ futures account to your spot account:'
-        }
-    print('Moving', coin, msg.get(typ))
+        1: "funds from your spot account to your USDⓈ-M futures account:",
+        2: "funds from your USDⓈ-M account to your spot account:",
+        3: "funds from your spot account to your COIN-Ⓜ futures account:",
+        4: "funds from your COIN-Ⓜ futures account to your spot account:",
+    }
+    print("Moving", coin, msg.get(typ))
+    try:
+        response = exchange.sapi_post_futures_transfer(
+            {
+                "asset": currency["id"],
+                "amount": exchange.currency_to_precision(coin, amount),
+                "type": typ,
+            }
+        )
+        if 'tranId' in response:
+            print("SUCCESS")
+            print("tranId:", response['tranId'])
+    except ExchangeError as e:
+        print(e)
+        return e
+    print("----------------------------------------------------------------------")
+    return response['tranId']
 
-    response = exchange.sapi_post_futures_transfer({
-        'asset': currency['id'],
-        'amount': exchange.currency_to_precision(coin, amount),
-        'type': typ,
-    })
-    print('----------------------------------------------------------------------')
-    return response
 
-def modify_iso_margin(symbol='BTC/USDT', amount=0., typ=1, side='BOTH'):
-    '''for ISOLATED positions only
+def modify_iso_margin(symbol="BTC/USDT", amount=0.0, typ=1, side="BOTH"):
+    """Add/deduct position margin.
+            for ISOLATED positions only
     typ:    1 = add position margin
             2 = reduce position margin
     side:   BOTH for One-way positions
             LONG or SHORT for Hedge Mode
-    '''
+    """
 
     market = exchange.market(symbol)
-    print('Modifying your ISOLATED', symbol, 'position margin:')
-    response = exchange.fapiPrivate_post_positionmargin({
-        'symbol': market['id'],
-        'amount': amount,
-        'positionSide': 'BOTH',
-        'type': typ,
-    })
-    print('----------------------------------------------------------------------')
+    print("Modifying your ISOLATED", symbol, "position margin:")
+    try:
+        response = exchange.fapiPrivate_post_positionmargin(
+            {
+                "symbol": market["id"],
+                "amount": amount,
+                "positionSide": "BOTH",
+                "type": typ,
+            }
+        )
+        print(response)
+    except ExchangeError as e:
+        print(e)
+        return e
+    print("----------------------------------------------------------------------")
+    return response
+
+
+def create_manual_order(symbol='BTCUSDT', order_type='market', side='sell',
+                        amount=0.090, price=None, params={}):
+    response = exchange.create_order(symbol=symbol, type=order_type, side=side,
+                            amount=amount, price=price, params=params)
+    pp(response)
     return response
 
 
 if __name__ == "__main__":
-    get_futures_balance(symbol='BTC/USDT')
-    get_futures_positions(symbol='BTC/USDT')
-    get_oneway_or_hedge()
+    # get_open_positions(params=None)
+    # get_position(ticker='BTCUSDT', params=None)
+    get_notional(ticker='BTCUSDT')
+    # get_futures_balances(info=False)
+    # get_futures_positions(symbol="BTC/USDT")
+    # get_oneway_or_hedge()
 
-
-
+    # set_hedge_mode(hedge=False)
+    # set_cross_mode(symbol='BTC/USDT', cross=False)
+    # binance_transfer(coin='USDT', amount=10., typ=1)
+    # binance_transfer(coin='USDT', amount=10., typ=2)
+    # binance_transfer(coin='USDT', amount=10., typ=3)
+    # binance_transfer(coin='USDT', amount=10., typ=4)
+    # modify_iso_margin(symbol='BTC/USDT', amount=10., typ=1, side='BOTH')
+    # create_manual_order(symbol='BTCUSDT', order_type='market', side='sell',
+    #                     amount=0.090, price=None)

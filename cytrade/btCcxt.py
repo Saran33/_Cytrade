@@ -44,6 +44,7 @@ def execute(
 
     cerebro.addstrategy(strategy, **stratKwargs)
 
+
     config = {
         "apiKey": BINANCE_KEY,
         "secret": BINANCE_SECRET,
@@ -51,15 +52,29 @@ def execute(
         "nonce": lambda: str(int(time.time() * 1000)),
     }
 
+    if TEST:
+        print("DEMO ACCOUNT")
+        options = {"fetchCurrencies": False,}
+    else:
+        options = {}
+    if FUTS:
+        options = options | {"defaultType": "future"}
+        exchange = 'binanceusdm'
+    else:
+        exchange = 'binance'
+
+    config = config | {"options": options}
+
+
     store = CCXTStore(
-        exchange="binance",
+        exchange=exchange,
         quote=quote,
         config=config,
         retries=5,
         debug=debug,
         verbose=verbose,
         sandbox=TEST,
-        futures=futures,
+        futures=FUTS,
     )
 
     broker_mapping = {
@@ -107,7 +122,6 @@ def execute(
 if __name__ == "__main__":
     start_dt = dt.utcnow() - timedelta(minutes=1440)
     end_dt = dt.utcnow()
-    # execute(bases='BNB', quote='USDT', strategy=TestStrategyCCXT, start_dt=start_dt, interval=1, debug=True, verbose=False)
     execute(
         bases=["BTC", "ETH"],
         quote="USDT",

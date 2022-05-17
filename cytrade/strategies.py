@@ -2,6 +2,8 @@ import signal
 import numpy as np
 import cytrader as bt
 from cytrader import Order
+# import backtrader as bt
+# from backtrader import Order
 from datetime import datetime as dt
 from cystratbase import CyStrategy
 from cyutils.cyzers import ll_single_kelly
@@ -182,6 +184,9 @@ class Classifier(bt.Strategy):
               ('verbose', False),
               ('log_file', f'../results/bt_classifier_{dt.now().strftime("%Y_%m_%d-%H_%M_%S")}.csv'))
 
+    # bt calls prenext instead of next unless
+    # all datafeeds have current values.
+    # Call next to avoid duplicating logic.
     def prenext(self):
         self.next()
 
@@ -222,6 +227,58 @@ class Classifier(bt.Strategy):
 
         short_target = -1 / max(self.p.n_positions, n_shorts)
         long_target = 1 / max(self.p.n_positions, n_longs)
+        if verbose:
+            self.log(
+                f'short_target: {short_target}, long_target: {long_target}')
+        for ticker in shorts:
+            self.order_target_percent(data=ticker, target=short_target)
+            if verbose:
+                self.log(f'{ticker} | SHORT ORDER CREATED')
+        for ticker in longs:
+            self.order_target_percent(data=ticker, target=long_target)
+            if verbose:
+                self.log(f'{ticker} | LONG ORDER CREATED')
+
+
+class btKellyML(CyStrategy):
+    params = (('n_positions', 1),
+              ('min_positions', 0),
+              ('window', 60),
+              ('verbose', False),
+              ('log_file', f'../results/bt_KellyML_{dt.now().strftime("%Y_%m_%d-%H_%M_%S")}.csv'))
+
+    # def prenext(self):
+    #     self.next()
+
+    def next(self):
+        verbose = self.p.verbose
+        today = self.datas[0].datetime.date()
+        positions = [d._name for d, pos in self.getpositions().items() if pos]
+        up, down = {}, {}
+        for data in self.datas:
+            if data.datetime.date() == today:
+                if data.predicted[0] > 0:
+                    up[data._name] = data.predicted[0]
+                elif data.predicted[0] < 0:
+                    down[data._name] = data.predicted[0]
+
+        shorts = sorted(down, key=down.get)[:self.p.n_positions]
+        longs = sorted(up, key=up.get, reverse=True)[:self.p.n_positions]
+        n_shorts, n_longs = len(shorts), len(longs)
+
+        if n_shorts < self.p.min_positions or n_longs < self.p.min_positions:
+            longs, shorts = [], []
+        for ticker in positions:
+            if ticker not in longs + shorts:
+                self.order_target_percent(data=ticker, target=0)
+                if verbose:
+                    self.log(f'{ticker} | CLOSING ORDER CREATED')
+                    
+        for data in self.datas:
+            kelly = self.data.kelly[0]
+
+        short_target = -1 * kelly
+        long_target = kelly
         if verbose:
             self.log(
                 f'short_target: {short_target}, long_target: {long_target}')
@@ -294,3 +351,130 @@ class KellyML(CyStrategy):
             if verbose:
                 self.log(f'{ticker} | LONG ORDER CREATED')
 
+
+
+class SMAStrategy(CyStrategy):
+    def __init__(self):
+        self.pctChange = bt.ind.PercentChange(self.data.close, period=1)
+        self.mean = bt.indicators.MovingAverageSimple(self.pctChange, period=self.p.kel_window)
+        self.std = bt.indicators.StdDev(self.pctChange, period=self.p.kel_window)
+        self.sma = bt.indicators.MovingAverageSimple(self.data.close, period=self.p.ma_window)
+
+    params = (('n_positions', 1),
+              ('min_positions', 0),
+              ('ma_window', 60),
+              ('kel_window', 60),
+              ('kel_bounds', [0., 1.]),
+              ('verbose', False),
+              ('log_file', f'../results/bt_sma_{dt.now().strftime("%Y_%m_%d-%H_%M")}.csv'))
+
+    def next(self):
+        verbose = self.p.verbose
+        today = self.datas[0].datetime.date()
+        positions = [d._name for d, pos in self.getpositions().items() if pos]
+        up, down = {}, {}
+        for data in self.datas:
+            if data.datetime.date() == today:
+                if self.sma > data.close[0]:
+                    up[data._name] = data.predicted[0]
+                elif self.sma < data.close[0]:
+                    down[data._name] = data.predicted[0]
+
+        shorts = sorted(down, key=down.get)[:self.p.n_positions]
+        longs = sorted(up, key=up.get, reverse=True)[:self.p.n_positions]
+        n_shorts, n_longs = len(shorts), len(longs)
+
+        if n_shorts < self.p.min_positions or n_longs < self.p.min_positions:
+            longs, shorts = [], []
+        for ticker in positions:
+            if ticker not in longs + shorts:
+                self.order_target_percent(data=ticker, target=0)
+                if verbose:
+                    self.log(f'{ticker} | CLOSING ORDER CREATED')
+                    
+        if self.mean[0]:
+            kelly = ll_single_kelly(self.mean[0], self.std[0], bounds=np.array(self.p.kel_bounds))
+        else:
+            kelly = 0
+
+        short_target = -1 * kelly
+        long_target = kelly
+        if verbose:
+            self.log(
+                f'target: {long_target}')
+        for ticker in shorts:
+            self.order_target_percent(data=ticker, target=short_target)
+            if verbose:
+                self.log(f'{ticker} | SHORT ORDER CREATED')
+        for ticker in longs:
+            self.order_target_percent(data=ticker, target=long_target)
+            if verbose:
+                self.log(f'{ticker} | LONG ORDER CREATED')
+
+
+# class CyStrategy(bt.Strategy):
+
+#     def log(self, txt, dt=None):
+#         """ Logger for the strategy"""
+#         dt = dt or self.datas[0].datetime.datetime(0)
+#         with Path(self.p.log_file).open('a') as f:
+#             log_writer = csv.writer(f)
+#             log_writer.writerow([dt.isoformat()] + txt.split(','))
+
+#         # Check if an order has been completed
+#         # broker could reject order if not enough cash
+#     def notify_order(self, order):
+#         if order.status in [order.Submitted, order.Accepted]:
+#             return
+
+#         if self.p.verbose:
+#             msg = ''
+#             if order.status in [order.Completed]:
+#                 dets = f'{order.executed.price:.2f} | SIZE: {order.executed.size} | VALUE: {order.executed.value} | COMM: {order.executed.comm}'
+
+#                 if order.isbuy():
+#                     msg = f'{order.data._name}: BUY executed {dets}'
+
+#                 elif order.issell():
+#                     msg = f'{order.data._name}: SELL executed {dets}'
+
+#             elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+#                 msg = f'{order.data._name}: Order Canceled/Margin/Rejected'
+#             else:
+#                 print(order.status)
+
+#             # print(''), print(order), print(msg), print('')
+#             self.log(msg)
+
+    # def order_target_value(self, data=None, target=0.0, price=None, **kwargs):
+    #     '''
+    #     See bt.Strategy.order_target_value()
+    #     This function has been modified to order fractional position sizes for 
+    #     trading cryptocurrency or forex, as opposed to fixed-integer-sized contracts.
+    #     '''
+
+    #     if isinstance(data, str):
+    #         data = self.getdatabyname(data)
+    #     elif data is None:
+    #         data = self.data
+
+    #     possize = self.getposition(data, self.broker).size
+    #     if not target and possize:  # closing a position
+    #         return self.close(data=data, size=possize, price=price, **kwargs)
+
+    #     else:
+    #         value = self.broker.getvalue(datas=[data])
+    #         comminfo = self.broker.getcommissioninfo(data)
+
+    #         # Make sure a price is there
+    #         price = price if price is not None else data.close[0]
+
+    #         if target > value:
+    #             size = comminfo.get_fracsize(price, target - value)
+    #             return self.buy(data=data, size=size, price=price, **kwargs)
+
+    #         elif target < value:
+    #             size = comminfo.get_fracsize(price, value - target)
+    #             return self.sell(data=data, size=size, price=price, **kwargs)
+
+    #     return None  # no execution size == possize

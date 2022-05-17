@@ -21,7 +21,7 @@ class CyStrategy(bt.Strategy):
         if status in [order.Submitted, order.Accepted]:
             return
 
-        if self.p.verbose:
+        if self.p.log:
             msg = u''
             if status in [order.Completed]:
                 dets = f'{order.executed.price:.2f} | SIZE: {order.executed.size} | VALUE: {order.executed.value} | COMM: {order.executed.comm}'

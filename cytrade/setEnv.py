@@ -23,8 +23,8 @@ def set_binance_env(FUTS=None):
     elif FUTS==True:
         if LIVE == True:
             TEST=False
-            BINANCE_KEY = config('BINANCE_FUTS_KEY')
-            BINANCE_SECRET = config('BINANCE_FUTS_SECRET')
+            BINANCE_KEY = config('BINANCE_KEY')
+            BINANCE_SECRET = config('BINANCE_SECRET')
         else:
             TEST=True
             BINANCE_KEY = config('BINANCE_FUTS_TEST_KEY')
